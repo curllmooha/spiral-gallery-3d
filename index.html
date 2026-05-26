@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vanilla Spiral Gallery</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div style="height: 1000vh; pointer-events: none;"></div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.183.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.183.0/examples/jsm/",
+                "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm"
+            }
+        }
+    </script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
