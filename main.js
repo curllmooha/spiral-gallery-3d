@@ -8,11 +8,11 @@ const CONFIG = {
   imagesPerTurn: 7,
   curvature: 1.5,
   imageScale: 0.83,
-  autoRotateSpeed: 0.001, 
-  scrollRotateForce: 0.5,
-  rotationSmoothing: 0.1,
-  momentum: 0.75,
-  scrollAdvanceSpeed: 0.5,
+  autoRotateSpeed: 0.001, // Reduced (from 0.002)
+  scrollRotateForce: 0.5, // Much lower (from 1.75)
+  rotationSmoothing: 0.1, // Slightly higher for more "weight"
+  momentum: 0.75, // Lowered (from 0.87) - this makes it stop sooner
+  scrollAdvanceSpeed: 0.5, // Lowered (from 0.17) - slows vertical movement
   squeezeIntensity: 0.5,
   squeezeWidth: 7.5,
   numInstances: 20,
@@ -305,6 +305,7 @@ class Gallery {
   }
   setupGUI() {
     const gui = new GUI();
+    gui.close();
     const shape = gui.addFolder("Spiral Shape");
     shape
       .add(CONFIG, "radius", 1, 15)
@@ -442,6 +443,8 @@ class Gallery {
     if (Math.abs(this.scrollVelocity) > 0.001) {
       this.lastScrollDirection = this.scrollVelocity > 0 ? 1 : -1;
     }
+
+    // const targetSpeed = (CONFIG.autoRotateSpeed * this.lastScrollDirection) + (this.scrollVelocity * CONFIG.scrollRotateForce);
     const clampedSpeed = THREE.MathUtils.clamp(targetSpeed, -0.2, 0.2);
 
     this.rotationSpeed +=
