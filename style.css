@@ -34,10 +34,9 @@ body::-webkit-scrollbar {
     display: none;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
 body {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;  
+    scrollbar-width: none; 
 }
 
 #canvas-container {
@@ -47,7 +46,6 @@ body {
     width: 100vw;
     height: 100vh;
     cursor: grab;
-    /* ADD THIS LINE TO FIX MOBILE */
     touch-action: none; 
 }
 
