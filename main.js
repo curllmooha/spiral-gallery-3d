@@ -26,26 +26,26 @@ const CONFIG = {
 };
 
 const IMAGE_PATHS = [
-  "1.png",
-  "2.png",
-  "3.png",
-  "4.png",
-  "5.png",
-  "6.png",
-  "1.png",
-  "2.png",
-  "3.png",
-  "4.png",
-  "5.png",
-  "6.png",
-  "1.png",
-  "2.png",
-  "3.png",
-  "4.png",
-  "5.png",
-  "6.png",
-  "1.png",
-  "2.png",
+  "images/1.png",
+  "images/2.png",
+  "images/3.png",
+  "images/4.png",
+  "images/5.png",
+  "images/6.png",
+  "images/1.png",
+  "images/2.png",
+  "images/3.png",
+  "images/4.png",
+  "images/5.png",
+  "images/6.png",
+  "images/1.png",
+  "images/2.png",
+  "images/3.png",
+  "images/4.png",
+  "images/5.png",
+  "images/6.png",
+  "images/1.png",
+  "images/2.png",
 ];
 
 // --- SHADERS ---
@@ -204,6 +204,7 @@ class Gallery {
     this.hasSnapped = false;
     this.hasUserInteracted = false;
     this.lastInteractionTime = performance.now();
+    this.pointerMoved = false;
     this.pointer = new THREE.Vector2(0, 0);
     this.smoothPointer = new THREE.Vector2(0, 0);
     this.reducedMotion = window.matchMedia(
@@ -219,7 +220,7 @@ class Gallery {
     this.createMesh();
     this.setupEvents();
     this.loader.classList.add("is-hidden");
-    this.animate(0);
+    gsap.ticker.add((time, deltaTime) => this.animate(time * 1000, deltaTime));
   }
 
   setupLenis() {
@@ -254,16 +255,23 @@ class Gallery {
     // Load textures and keep track of their original image dimensions
     const textureData = await Promise.all(
       uniquePaths.map((p) => {
-        return new Promise((resolve, reject) => {
-          loader.load(p, (tex) => {
-            const aspect = tex.image.width / tex.image.height;
+        return new Promise((resolve) => {
+          const done = (tex) => {
             loadedCount += 1;
             this.loaderProgress.style.width =
               `${(loadedCount / uniquePaths.length) * 100}%`;
-            resolve({ tex, aspect });
-          }, undefined, reject);
+            resolve(tex);
+          };
+          loader.load(p, done, undefined, () => {
+            console.warn(`Could not load ${p}`);
+            done(null);
+          });
         });
       }),
+    ).then((list) =>
+      list
+        .filter(Boolean)
+        .map((tex) => ({ tex, aspect: tex.image.width / tex.image.height })),
     );
     this.preloadedImages = textureData.map((data) => data.tex.image);
 
@@ -272,9 +280,15 @@ class Gallery {
     const rows = Math.ceil(count / cols);
 
     const canvas = document.createElement("canvas");
-    canvas.width = 2048;
-    canvas.height = 2048;
+    const atlasSize = Math.min(
+      4096,
+      this.renderer.capabilities.maxTextureSize,
+    );
+    canvas.width = atlasSize;
+    canvas.height = atlasSize;
     const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
     const tileW = canvas.width / cols;
     const tileH = canvas.height / rows;
@@ -293,6 +307,7 @@ class Gallery {
     this.atlasTexture.colorSpace = THREE.SRGBColorSpace;
     this.atlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
     this.atlasTexture.magFilter = THREE.LinearFilter;
+    this.atlasTexture.generateMipmaps = true;
     this.atlasTexture.anisotropy =
       this.renderer.capabilities.getMaxAnisotropy();
     this.atlasCols = cols;
@@ -401,9 +416,24 @@ class Gallery {
   }
 
   setupEvents() {
+    const canvas = this.renderer.domElement;
+    canvas.style.touchAction = "none";
+    this.activePointer = null;
+
     window.addEventListener("pointermove", (e) => {
       this.pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
       this.pointer.y = (e.clientY / window.innerHeight) * 2 - 1;
+      this.pointerMoved = true;
+
+      if (!this.isDragging || e.pointerId !== this.activePointer) return;
+      const deltaX = e.clientX - this.lastTouchX;
+      const deltaY = e.clientY - this.lastTouchY;
+      const gain = e.pointerType === "touch" ? 0.008 : 0.005;
+      this.pendingDelta += deltaX * gain;
+      this.lastInteractionTime = performance.now();
+      this.dragDistance += Math.hypot(deltaX, deltaY);
+      this.lastTouchX = e.clientX;
+      this.lastTouchY = e.clientY;
     });
 
     window.addEventListener(
@@ -416,92 +446,42 @@ class Gallery {
       { passive: true },
     );
 
-    // Mouse Drag
-    window.addEventListener("mousedown", (e) => {
-      if (this.focusedInstance !== -1) return;
+    window.addEventListener("pointerdown", (e) => {
+      if (this.focusedInstance !== -1 || this.activePointer !== null) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       this.markInteraction();
+      this.activePointer = e.pointerId;
       this.isDragging = true;
       this.lastTouchX = e.clientX;
       this.lastTouchY = e.clientY;
       this.dragDistance = 0;
       this.pointerDown.set(e.clientX, e.clientY);
+      document.body.classList.add("is-dragging");
     });
 
-    window.addEventListener("mousemove", (e) => {
-      if (!this.isDragging) return;
-      const deltaX = e.clientX - this.lastTouchX;
-      const deltaY = e.clientY - this.lastTouchY;
-      this.pendingDelta += deltaX * 0.005; // Matches the "heavy" feel we set
-      this.lastInteractionTime = performance.now();
-      this.dragDistance += Math.hypot(deltaX, deltaY);
-      this.lastTouchX = e.clientX;
-      this.lastTouchY = e.clientY;
-    });
-
-    window.addEventListener("mouseup", (e) => {
-      if (this.isDragging && this.dragDistance < 8) {
-        this.openImageAt(e.clientX, e.clientY);
-      }
+    const endDrag = (e) => {
+      if (e.pointerId !== this.activePointer) return;
+      const tapped =
+        e.type === "pointerup" &&
+        this.dragDistance < (e.pointerType === "touch" ? 10 : 8);
       this.isDragging = false;
+      this.activePointer = null;
+      document.body.classList.remove("is-dragging");
+      if (tapped) this.openImageAt(e.clientX, e.clientY);
       this.scheduleSnap();
-    });
-
-    // Mobile Touch Support
-    window.addEventListener(
-      "touchstart",
-      (e) => {
-        if (this.focusedInstance !== -1) return;
-        this.markInteraction();
-        this.isDragging = true; // Use dragging state for touch too
-        this.lastTouchX = e.touches[0].clientX;
-        this.lastTouchY = e.touches[0].clientY;
-        this.dragDistance = 0;
-        this.scrollVelocity = 0; // Reset velocity on fresh touch for control
-      },
-      { passive: false },
-    );
-
-    window.addEventListener(
-      "touchmove",
-      (e) => {
-        if (!this.isDragging) return;
-
-        const currentX = e.touches[0].clientX;
-        const currentY = e.touches[0].clientY;
-        // Corrected Math: Current - Last to match the "Drag Left = Move Left" logic
-        const deltaX = currentX - this.lastTouchX;
-
-        // We increase the multiplier slightly for mobile (0.008)
-        // because fingers move across shorter physical distances than mice
-        this.pendingDelta += deltaX * 0.008;
-        this.lastInteractionTime = performance.now();
-        this.dragDistance += Math.hypot(
-          currentX - this.lastTouchX,
-          currentY - this.lastTouchY,
-        );
-
-        this.lastTouchX = currentX;
-        this.lastTouchY = currentY;
-
-        // Prevent the browser from bouncing/refreshing
-        if (e.cancelable) e.preventDefault();
-      },
-      { passive: false },
-    );
-
-    window.addEventListener("touchend", () => {
-      if (this.isDragging && this.dragDistance < 10) {
-        this.openImageAt(this.lastTouchX, this.lastTouchY);
-      }
-      this.isDragging = false;
-      this.scheduleSnap();
-    });
+    };
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
 
     window.addEventListener("resize", () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      this.lastInteractionTime = performance.now();
     });
 
     this.focusOverlay.addEventListener("click", () => {
@@ -1134,15 +1114,17 @@ class Gallery {
       );
   }
 
-  animate(time) {
-    requestAnimationFrame((t) => this.animate(t));
+  animate(time, deltaTime = 16.667) {
+    // Frame-rate independent stepping: 1 = one 60fps frame
+    const k = THREE.MathUtils.clamp(deltaTime / 16.667, 0.25, 3);
+    const ease = (factor) => 1 - Math.pow(1 - factor, k);
 
     // Physics
     this.scrollVelocity += this.pendingDelta;
     this.pendingDelta = 0;
-    this.scrollVelocity *= CONFIG.momentum;
+    this.scrollVelocity *= Math.pow(CONFIG.momentum, k);
     if (Math.abs(this.scrollVelocity) < 0.0001) this.scrollVelocity = 0;
-    this.scrollOffset += this.scrollVelocity;
+    this.scrollOffset += this.scrollVelocity * k;
 
     // Uniforms update
     this.uniforms.uScrollOffset.value =
@@ -1170,8 +1152,8 @@ class Gallery {
     const clampedSpeed = THREE.MathUtils.clamp(targetSpeed, -0.2, 0.2);
 
     this.rotationSpeed +=
-      (clampedSpeed - this.rotationSpeed) * CONFIG.rotationSmoothing;
-    this.rotation += this.rotationSpeed;
+      (clampedSpeed - this.rotationSpeed) * ease(CONFIG.rotationSmoothing);
+    this.rotation += this.rotationSpeed * k;
     this.uniforms.uRotation.value = this.rotation;
     this.uniforms.uVelocity.value = this.scrollVelocity;
     this.uniforms.uTime.value = time * 0.001;
@@ -1179,7 +1161,7 @@ class Gallery {
     const targetSqueeze =
       Math.min(Math.abs(this.scrollVelocity) * 3, 1.0) *
       CONFIG.squeezeIntensity;
-    this.smoothSqueeze += (targetSqueeze - this.smoothSqueeze) * 0.08;
+    this.smoothSqueeze += (targetSqueeze - this.smoothSqueeze) * ease(0.08);
     this.uniforms.uSqueezeAmount.value = this.smoothSqueeze;
 
     const hasSettled =
@@ -1187,17 +1169,23 @@ class Gallery {
       !this.isSnapping &&
       Math.abs(this.scrollVelocity) < 0.0015 &&
       Math.abs(this.pendingDelta) < 0.0015 &&
-      time - this.lastInteractionTime > CONFIG.snapDelay;
+      performance.now() - this.lastInteractionTime > CONFIG.snapDelay;
 
     if (hasSettled) this.snapToNearestCard();
 
     const parallaxStrength = this.reducedMotion ? 0 : CONFIG.pointerParallax;
-    this.smoothPointer.lerp(this.pointer, 0.045);
+    this.smoothPointer.lerp(this.pointer, ease(0.06));
     this.camera.position.x = this.smoothPointer.x * parallaxStrength;
     this.camera.position.y = -this.smoothPointer.y * parallaxStrength * 0.55;
     this.camera.lookAt(0, 0, 0);
 
-    if (!this.isDragging && this.focusedInstance === -1) {
+    if (
+      !this.isDragging &&
+      this.focusedInstance === -1 &&
+      !this.reducedMotion &&
+      (this.pointerMoved || Math.abs(this.scrollVelocity) > 0.0005)
+    ) {
+      this.pointerMoved = false;
       const pointerX = (this.pointer.x * 0.5 + 0.5) * window.innerWidth;
       const pointerY = (-this.pointer.y * 0.5 + 0.5) * window.innerHeight;
       const hoveredCard = this.findCardAt(pointerX, pointerY);
